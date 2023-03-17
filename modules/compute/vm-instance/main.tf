@@ -14,6 +14,11 @@
  * limitations under the License.
 */
 
+module "oslogin" {
+  source  = "../../aux/enable-oslogin"
+  enable_oslogin = var.enable_oslogin
+}
+
 locals {
   native_fstype = []
   startup_script = local.startup_from_network_storage != null ? (
@@ -46,12 +51,6 @@ locals {
     ? var.on_host_maintenance
     : local.on_host_maintenance_default
   )
-
-  oslogin_api_values = {
-    "DISABLE" = "FALSE"
-    "ENABLE"  = "TRUE"
-  }
-  enable_oslogin = var.enable_oslogin == "INHERIT" ? {} : { enable-oslogin = lookup(local.oslogin_api_values, var.enable_oslogin, "") }
 
   machine_vals            = split("-", var.machine_type)
   machine_family          = local.machine_vals[0]
@@ -210,7 +209,7 @@ resource "google_compute_instance" "compute_vm" {
     }
   }
 
-  metadata = merge(local.network_storage, local.startup_script, local.enable_oslogin, var.metadata)
+  metadata = merge(local.network_storage, local.startup_script, module.oslogin.metadata, var.metadata)
 
   lifecycle {
     ignore_changes = [

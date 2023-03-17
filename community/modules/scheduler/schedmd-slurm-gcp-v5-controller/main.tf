@@ -13,6 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
 */
+module "oslogin" {
+  source  = "../../aux/enable-oslogin"
+  enable_oslogin = var.enable_oslogin
+}
 
 locals {
   ghpc_startup_script_controller = [{
@@ -103,7 +107,7 @@ module "slurm_controller_template" {
   disk_size_gb             = var.disk_size_gb
   disk_type                = var.disk_type
   enable_confidential_vm   = var.enable_confidential_vm
-  enable_oslogin           = var.enable_oslogin
+  enable_oslogin           = module.oslogin.as_bool
   enable_shielded_vm       = var.enable_shielded_vm
   gpu                      = var.gpu != null ? var.gpu : one(local.guest_accelerator)
   labels                   = var.labels

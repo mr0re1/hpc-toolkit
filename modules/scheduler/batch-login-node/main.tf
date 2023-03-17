@@ -18,6 +18,11 @@ data "google_compute_instance_template" "batch_instance_template" {
   name = var.instance_template
 }
 
+module "oslogin" {
+  source  = "../../aux/enable-oslogin"
+  enable_oslogin = var.enable_oslogin
+}
+
 locals {
 
   # Handle directly created job data (deprecated). All of job_id, job_template_contents and job_filename must be set.
@@ -38,13 +43,7 @@ locals {
   instance_template_metadata = data.google_compute_instance_template.batch_instance_template.metadata
   startup_metadata           = { startup-script = module.login_startup_script.startup_script }
 
-  oslogin_api_values = {
-    "DISABLE" = "FALSE"
-    "ENABLE"  = "TRUE"
-  }
-  oslogin_metadata = var.enable_oslogin == "INHERIT" ? {} : { enable-oslogin = lookup(local.oslogin_api_values, var.enable_oslogin, "") }
-
-  login_metadata = merge(local.instance_template_metadata, local.startup_metadata, local.oslogin_metadata)
+  login_metadata = merge(local.instance_template_metadata, local.startup_metadata, module.oslogin.metadata)
 
   batch_command_instructions = join("\n", [for job in local.job_data : <<-EOT
   ## For job: ${job.id} ##
