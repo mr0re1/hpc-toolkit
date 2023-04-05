@@ -1,8 +1,10 @@
+# Let's start adding cross-marks:
+# X
 import time
 import random
 
 SLEEP = 0
-FAIL_RATE = 0.5
+FAIL_RATE = 1.0
 
 if SLEEP:
     time.sleep(SLEEP)
