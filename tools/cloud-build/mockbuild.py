@@ -1,3 +1,5 @@
+# Let's start adding cross-marks:
+# X
 import time
 import random
 
