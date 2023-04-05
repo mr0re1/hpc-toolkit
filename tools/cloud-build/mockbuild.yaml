@@ -1,0 +1,5 @@
+steps:
+- name: python
+  entrypoint: python
+  args: ["/workspace/tools/cloud-build/mockbuild.py"]
+    
