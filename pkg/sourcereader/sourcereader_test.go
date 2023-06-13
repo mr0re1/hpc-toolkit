@@ -109,30 +109,6 @@ func (s *MySuite) TestIsLocalPath(c *C) {
 	c.Assert(ret, Equals, false)
 }
 
-func (s *MySuite) TestIsGitRepository(c *C) {
-	// False: Is an embedded path
-	ret := IsGitPath("modules/anything/else")
-	c.Assert(ret, Equals, false)
-
-	// False: Local path
-	ret = IsGitPath("./anything/else")
-	c.Assert(ret, Equals, false)
-
-	ret = IsGitPath("./modules")
-	c.Assert(ret, Equals, false)
-
-	ret = IsGitPath("../modules/")
-	c.Assert(ret, Equals, false)
-
-	// True, other
-	ret = IsGitPath("github.com/modules")
-	c.Assert(ret, Equals, true)
-
-	// True, genetic git repository
-	ret = IsGitPath("git::https://gitlab.com/modules")
-	c.Assert(ret, Equals, true)
-}
-
 func (s *MySuite) TestFactory(c *C) {
 	// Local modules
 	locSrcReader := Factory("./modules/anything/else")
@@ -144,11 +120,11 @@ func (s *MySuite) TestFactory(c *C) {
 
 	// GitHub modules
 	ghSrcString := Factory("github.com/modules")
-	c.Assert(reflect.TypeOf(ghSrcString), Equals, reflect.TypeOf(GitSourceReader{}))
+	c.Assert(reflect.TypeOf(ghSrcString), Equals, reflect.TypeOf(GetterSourceReader{}))
 
 	// Git modules
 	gitSrcString := Factory("git::https://gitlab.com/modules")
-	c.Assert(reflect.TypeOf(gitSrcString), Equals, reflect.TypeOf(GitSourceReader{}))
+	c.Assert(reflect.TypeOf(gitSrcString), Equals, reflect.TypeOf(GetterSourceReader{}))
 }
 
 func (s *MySuite) TestCopyFromPath(c *C) {

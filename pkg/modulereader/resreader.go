@@ -130,7 +130,9 @@ func GetModuleInfo(source string, kind string) (ModuleInfo, error) {
 
 	var modPath string
 	switch {
-	case sourcereader.IsGitPath(source):
+	case sourcereader.IsEmbeddedPath(source) || sourcereader.IsLocalPath(source):
+		modPath = source
+	default:
 		tmpDir, err := ioutil.TempDir("", "module-*")
 		if err != nil {
 			return ModuleInfo{}, err
@@ -138,14 +140,8 @@ func GetModuleInfo(source string, kind string) (ModuleInfo, error) {
 		modPath = path.Join(tmpDir, "module")
 		sourceReader := sourcereader.Factory(source)
 		if err = sourceReader.GetModule(source, modPath); err != nil {
-			return ModuleInfo{}, fmt.Errorf("failed to clone git module at %s: %v", source, err)
+			return ModuleInfo{}, fmt.Errorf("failed to get module at %s: %v", source, err)
 		}
-
-	case sourcereader.IsEmbeddedPath(source) || sourcereader.IsLocalPath(source):
-		modPath = source
-
-	default:
-		return ModuleInfo{}, fmt.Errorf("Source is not valid: %s", source)
 	}
 
 	reader := Factory(kind)
