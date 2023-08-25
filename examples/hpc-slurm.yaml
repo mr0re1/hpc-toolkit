@@ -117,6 +117,7 @@ deployment_groups:
 validators:
 - validator: test_resource_requirements
   inputs:
+    #ignore_usage: true
     requirements:
     # Storage
     - metric: file.googleapis.com/standard-storage-gb-per-region # Basic HDD (Standard)
@@ -138,5 +139,6 @@ validators:
       required: $(vars.num_parallel_jobs)
     - metric: compute.googleapis.com/resource_policies
       required: $(vars.num_parallel_jobs)
-    
+    - metric: 	compute.googleapis.com/n2_cpus
+      required: 700
     

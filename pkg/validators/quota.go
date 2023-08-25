@@ -54,6 +54,8 @@ type QuotaError struct {
 	Consumer       string
 	Service        string
 	Metric         string
+	DisplayName    string
+	Unit           string
 	Dimensions     map[string]string
 	EffectiveLimit int64
 	Usage          int64
@@ -63,17 +65,17 @@ type QuotaError struct {
 func (e QuotaError) Error() string {
 	loc := ""
 	if len(e.Dimensions) > 0 {
-		loc = fmt.Sprintf(" in %v", e.Dimensions)
+		prettyMap := fmt.Sprintf("%v", e.Dimensions)[3:]
+		loc = fmt.Sprintf(" in %s", prettyMap)
 	}
 	rhs := fmt.Sprintf("requested=%d", e.Requested)
 	if e.Usage > 0 {
 		rhs = fmt.Sprintf("requested=%d + usage=%d", e.Requested, e.Usage)
 	}
-	return fmt.Sprintf("not enough quota for resource %q%s, limit=%d < %s", e.Metric, loc, e.EffectiveLimit, rhs)
+	return fmt.Sprintf("not enough quota %q as %q %s, limit=%d < %s", e.DisplayName, e.Unit, loc, e.EffectiveLimit, rhs)
 }
 
 func validateResourceRequirements(rs []ResourceRequirement, up *usageProvider) ([]QuotaError, error) {
-	qe := []QuotaError{}
 	// Group by Consumer and Service
 	type gk struct {
 		Consumer string
@@ -86,89 +88,97 @@ func validateResourceRequirements(rs []ResourceRequirement, up *usageProvider) (
 		groups[k] = append(groups[k], r)
 	}
 
-	for k, g := range groups {
-		ls, err := serviceLimits(k.Consumer, k.Service)
-		if err != nil {
-			return qe, err
-		}
-		qse, err := validateServiceLimits(g, ls, up)
-		if err != nil {
-			return qe, err
-		}
-		qe = append(qe, qse...)
+	// Process all groups in parallel
+	errs := config.Errors{}
+	qerrs := []QuotaError{}
+	for k, g := range groups { // TODO: parallelize
+		qe, err := validateServiceRequirements(k.Consumer, k.Service, g, up)
+		errs.Add(err)
+		qerrs = append(qerrs, qe...)
 	}
-
-	return qe, nil
+	return qerrs, errs.OrNil()
 }
 
-func validateServiceLimits(rs []ResourceRequirement, ls []*sub.ConsumerQuotaMetric, up *usageProvider) ([]QuotaError, error) {
-	// Group by Metric and Aggregation
-	type gk struct {
-		Metric      string
-		Aggregation string
+func findBucket(r ResourceRequirement, ql *sub.ConsumerQuotaLimit) (*sub.QuotaBucket, error) {
+	// Iterate buckets in order from most to less specific
+	for i := len(ql.QuotaBuckets) - 1; i >= 0; i-- {
+		if r.InBucket(ql.QuotaBuckets[i]) {
+			return ql.QuotaBuckets[i], nil
+		}
 	}
-	groups := map[gk][]ResourceRequirement{}
+	// According to docs the top bucket should be a wildcard `dimensions={}`
+	// So we should never end up here, return fake "unlimited" bucket and report error.
+	return &sub.QuotaBucket{Dimensions: map[string]string{}, EffectiveLimit: -1},
+		fmt.Errorf("unexpected default-less ConsumerQuotaLimit: %q", ql.Name)
+}
+
+func validateServiceRequirements(consumer string, service string, rs []ResourceRequirement, up *usageProvider) ([]QuotaError, error) {
+	qms, err := queryMetrics(consumer, service)
+	if err != nil {
+		return nil, err
+	}
+
+	// Each ConsumerQuotaMetric can contain multiple ConsumerQuotaLimits,
+	// e.g. ConsumerQuotaMetric for "N2 CPUs" has two ConsumerQuotaLimits: regional and zonal.
+	// Organize requirements into map:
+	// Metric|Unit(e.g. cpus per zone)|Dimensions -> [requirements to this bucket]
+	// NOTE: requirement can be attributed to multiple buckets
+	type bucketRequirements struct {
+		QuotaMetric  *sub.ConsumerQuotaMetric
+		QuotaLimit   *sub.ConsumerQuotaLimit
+		Bucket       *sub.QuotaBucket
+		Requirements []ResourceRequirement
+	}
+	reqToBucket := map[string]bucketRequirements{}
+
+	errs := config.Errors{}
 	for _, r := range rs {
-		k := gk{r.Metric, r.Aggregation}
-		groups[k] = append(groups[k], r)
-	}
-
-	qe := []QuotaError{}
-	for k, g := range groups {
-		agg, err := aggregation(k.Aggregation)
-		if err != nil {
-			return qe, err
-		}
-
-		// select limits for the metric
-		ml := []*sub.ConsumerQuotaLimit{}
-		for _, l := range ls {
-			if l.Metric == k.Metric {
-				ml = append(ml, l.ConsumerQuotaLimits...)
-			}
-		}
-		if len(ml) == 0 {
-			return qe, fmt.Errorf("limits for metric %q were not found", k.Metric)
-		}
-
-		for _, limit := range ml {
-			qle := validateLimit(g, limit, up, agg)
-			qe = append(qe, qle...)
-		}
-	}
-	return qe, nil
-}
-
-func validateLimit(rs []ResourceRequirement, limit *sub.ConsumerQuotaLimit, up *usageProvider, agg aggFn) []QuotaError {
-	qe := []QuotaError{}
-	for _, bucket := range limit.QuotaBuckets {
-		vs := []int64{}
-		for _, r := range rs {
-			if r.InBucket(bucket) {
-				vs = append(vs, r.Required)
-			}
-		}
-		if len(vs) == 0 {
+		qm, ok := qms[r.Metric]
+		if !ok {
+			// TODO: add path to ResourceRequirement for better error reporting
+			errs.Add(fmt.Errorf("can't find quota for metric %q", r.Metric))
 			continue
 		}
-		usage := up.Usage(limit.Metric, bucket.Dimensions["region"], bucket.Dimensions["zone"])
-		required := agg(vs)
-		for _, r := range required {
-			if !satisfied(r+usage, bucket.EffectiveLimit) {
-				r0 := rs[0] // all should have the same consumer, service and metric
-				qe = append(qe, QuotaError{
-					Consumer:       r0.Consumer,
-					Service:        r0.Service,
-					Metric:         r0.Metric,
-					Dimensions:     bucket.Dimensions,
-					EffectiveLimit: bucket.EffectiveLimit,
-					Usage:          usage,
-					Requested:      r,
-				})
+
+		for _, ql := range qm.ConsumerQuotaLimits {
+			b, err := findBucket(r, ql)
+			errs.Add(err)
+
+			k := fmt.Sprintf("%s|%v", ql.Name, b.Dimensions)
+			br, ok := reqToBucket[k] // update stored bucket requirements
+			if !ok {
+				br = bucketRequirements{qm, ql, b, []ResourceRequirement{}}
 			}
+			br.Requirements = append(br.Requirements, r)
+			reqToBucket[k] = br
+		}
+
+	}
+
+	qerrs := []QuotaError{}
+	// Validate bucket requirements
+	for _, br := range reqToBucket {
+		usage := up.Usage(br.QuotaMetric.Metric, br.Bucket.Dimensions["region"], br.Bucket.Dimensions["zone"])
+		required := int64(0)
+		for _, r := range br.Requirements {
+			required += r.Required // !!! Aggregation
+		}
+		if !satisfied(required+usage, br.Bucket.EffectiveLimit) {
+			qerrs = append(qerrs, QuotaError{
+				Consumer:       consumer,
+				Service:        service,
+				Metric:         br.QuotaMetric.Metric,
+				DisplayName:    br.QuotaMetric.DisplayName,
+				Unit:           br.QuotaLimit.Unit,
+				Dimensions:     br.Bucket.Dimensions,
+				EffectiveLimit: br.Bucket.EffectiveLimit,
+				Usage:          usage,
+				Requested:      required,
+			})
 		}
 	}
-	return qe
+
+	return qerrs, errs.OrNil()
 }
 
 func satisfied(requested int64, limit int64) bool {
@@ -216,19 +226,21 @@ func aggregation(agg string) (aggFn, error) {
 	}
 }
 
-func serviceLimits(consumer string, service string) ([]*sub.ConsumerQuotaMetric, error) {
+func queryMetrics(consumer string, service string) (map[string]*sub.ConsumerQuotaMetric, error) {
 	ctx := context.Background()
 	s, err := sub.NewService(ctx)
 	if err != nil {
 		return nil, err
 	}
-	res := []*sub.ConsumerQuotaMetric{}
+	res := map[string]*sub.ConsumerQuotaMetric{}
 	parent := fmt.Sprintf("%s/services/%s", consumer, service)
 	err = s.Services.ConsumerQuotaMetrics.
 		List(parent).
 		View("BASIC"). // BASIC reduces the response size & latency
 		Pages(ctx, func(page *sub.ListConsumerQuotaMetricsResponse) error {
-			res = append(res, page.Metrics...)
+			for _, m := range page.Metrics {
+				res[m.Metric] = m
+			}
 			return nil
 		})
 	return res, err
