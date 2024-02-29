@@ -282,25 +282,46 @@ def get_pr(pr_num: int) -> dict:
     resp.raise_for_status()
     return resp.json()
 
+def get_changed_files_tags(base: str, head: str) -> set[str]:
+    res = subprocess.run(["git", "log", f"{base}..{head}", "--name-only", "--format="], stdout=subprocess.PIPE)
+    assert res.returncode == 0
+    changed_files = res.stdout.decode('ascii').strip().split("\n")
+    tags = set()
+    for f in changed_files:
+        if f.startswith("community/"): f = f[len("community/"):]
+        if not f.startswith("modules/"): continue
+        parts = f.split("/")
+        if len(parts) < 3: continue
+        tags.add(f"m.{parts[2]}")
+    return tags
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=DESCRIPTION)
     parser.add_argument("--sha", type=str, help="Short SHA of target PR")
     parser.add_argument("--pr", type=int, help="PR number")
-    parser.add_argument("test_selector", nargs='+', type=str,
+
+    parser.add_argument("test_selector", nargs='*', type=str,
                         help="Selector for test, currently support 'all' and exact name match")
     parser.add_argument("--tags", nargs="*", type=str, help="Filter tests by tags")
+    parser.add_argument("--auto", action="store_true", help="If true, will inspect changed files and run tests for them")
+    
     parser.add_argument("--project", type=str,
                         help="GCP ProjectID, if not set will use default one (`gcloud config get-value project`)")
     parser.add_argument("-c", type=int, default=1,
                         help="Number of tests to run concurrently, default is 1")
     parser.add_argument("-r", type=int, default=1,
                         help="Number of retries, to disable retries set to 0, default is 1")
+    
+    parser.add_argument("--base", type=str, default="develop", help="Revision to inspect diff from")
+    
     args = parser.parse_args()
 
     assert (args.sha is None) ^ (args.pr is None), "either --pr or --sha are required"
     if args.pr:
-        sha = get_pr(args.pr)["head"]["sha"]
+        pr = get_pr(args.pr)
+        sha = pr["head"]["sha"]
+        if args.base is None:
+            args.base = pr["base"]["sha"]
     else:
         sha = args.sha
 
@@ -312,6 +333,12 @@ if __name__ == "__main__":
 
     cb = cloudbuild_v1.services.cloud_build.CloudBuildClient()
     selectors = [make_selector(s) for s in args.test_selector] + [selector_by_tag(t) for t in args.tags or []]
+
+    if args.auto:
+        assert args.base is not None, "--base or --pr are required for auto mode"
+        auto_tags = get_changed_files_tags(args.base, sha)
+        print(auto_tags)
+        selectors += [selector_by_tag(t) for t in auto_tags]
     
     ui = UI()
     Babysitter(ui, cb, project, sha, selectors, args.c, args.r).do()
