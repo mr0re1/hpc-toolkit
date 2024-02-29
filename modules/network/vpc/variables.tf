@@ -15,7 +15,7 @@
 */
 
 variable "project_id" {
-  description = "Project in which the HPC deployment will be created"
+  description = "Project in which the HPC deployment will be created, LLOL"
   type        = string
 }
 
