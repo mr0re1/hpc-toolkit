@@ -12,20 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# OFE test is specially configured to only run as a PR trigger and does not
-# run on as a nightly build
 
-resource "google_cloudbuild_trigger" "pr_ofe_test" {
-  name        = "PR-OFE-test"
-  description = "OFE test while submitting PR"
+resource "google_service_account" "babysit" {
+  account_id   = "babysit-runner-sa"
+  display_name = "Service Account for running babysit tool"
 
-  filename = "tools/cloud-build/daily-tests/builds/ofe-deployment.yaml"
-  approval_config {
-    approval_required = true
-  }
+}
+
+resource "google_cloudbuild_trigger" "pr_babysit" {
+  name        = "PR-babysit"
+  description = "Automatically run susbet of integration tests on the PR."
+  service_account = resource.google_service_account.babysit.id
+
+  filename = "tools/cloud-build/pr-babysit.yaml"
 
   github {
-    owner = "GoogleCloudPlatform"
+    # !!! owner = "GoogleCloudPlatform"
+    owner = "mr0re1"
     name  = "hpc-toolkit"
     pull_request {
       branch          = ".*"

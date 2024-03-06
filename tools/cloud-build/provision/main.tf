@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-terraform {
-  backend "gcs" {
-    prefix = "dev-infra-tf/state"
-  }
-}
+# terraform {
+#   backend "gcs" {
+#     prefix = "dev-infra-tf/state"
+#   }
+# }
 
 locals {
   ref_main        = "refs/heads/main"

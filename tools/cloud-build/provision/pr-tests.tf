@@ -23,7 +23,7 @@ resource "google_cloudbuild_trigger" "pr_test" {
   }
 
   github {
-    owner = "GoogleCloudPlatform"
+    owner = "mr0re1"
     name  = "hpc-toolkit"
     pull_request {
       branch          = ".*"
