@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Iterable, List, Tuple, Optional
+from typing import Iterable, List, Tuple, Optional, Dict, Set
 import argparse
 import base64
 import collections
@@ -912,6 +912,15 @@ def to_hostlist_fast(names: Iterable[str]) -> str:
     return ",".join(res)
 
 
+@lru_cache(maxsize=1)
+def suspend_exc_states() -> Optional[Set[str]]:
+    config = run(f"{lkp.scontrol} show config").stdout.rstrip()
+    m = re.search(r"SuspendExcStates\s+=\s+(?P<states>[\w\(\)]+)", config)
+    if not m:
+        log.warning("SuspendExcStates not found in Slurm config")
+        return None
+    return set(m.group("states").split(","))
+
 def part_is_tpu(part):
     """check if partition with name part contains a nodeset of type tpu"""
     return len(lkp.cfg.partitions[part].partition_nodeset_tpu) > 0
@@ -1526,15 +1535,18 @@ class Lookup:
         ns = self.cfg.nodeset.get(nodeset_name)
         if ns:
             return ns
+        # TODO: handle dynamic nodes
         return self.cfg.nodeset_tpu.get(nodeset_name)
 
-    def node_is_tpu(self, node_name=None):
-        nodeset_name = self.node_nodeset_name(node_name)
-        return self.cfg.nodeset_tpu.get(nodeset_name) is not None
 
-    def node_is_dyn(self, node_name=None) -> bool:
-        nodeset = self.node_nodeset_name(node_name)
-        return self.cfg.nodeset_dyn.get(nodeset) is not None
+    def node_is_ordinary(self, node_name: str) -> bool:
+        return self.node_nodeset_name(node_name) in self.cfg.nodeset
+
+    def node_is_tpu(self, node_name: str) -> bool:
+        return self.node_nodeset_name(node_name) in self.cfg.nodeset_tpu
+
+    def node_is_dyn(self, node_name: str) -> bool:
+        return self.node_nodeset_name(node_name) in self.cfg.nodeset_dyn
 
     def chunk_tpu_nodes(self, tpu_nodes):
         model = tpu_nodes[0]
@@ -1598,17 +1610,11 @@ class Lookup:
         return idx < self.node_nodeset(node_name).node_count_static
 
     @lru_cache(maxsize=None)
-    def slurm_nodes(self):
-        StateTuple = namedtuple("StateTuple", "base,flags")
-
-        def make_node_tuple(node_line):
-            """turn node,state line to (node, StateTuple(state))"""
-            # state flags include: CLOUD, COMPLETING, DRAIN, FAIL, POWERED_DOWN,
-            #   POWERING_DOWN
-            node, fullstate = node_line.split(",")
-            state = fullstate.split("+")
-            state_tuple = StateTuple(state[0], set(state[1:]))
-            return (node, state_tuple)
+    def slurm_nodes(self) -> Dict[str, Set[str]]:
+        def make_node_tuple(node_line: str) -> Tuple[str, Set[str]]:
+            """turn node,state line to (nodename, set_of_state_flags)"""
+            nodename, stateline = node_line.split(",")
+            return nodename, frozenset(stateline.split("+"))
 
         cmd = (
             f"{self.scontrol} show nodes | "
@@ -1616,14 +1622,13 @@ class Lookup:
             r"paste -sd',\n'"
         )
         node_lines = run(cmd, shell=True).stdout.rstrip().splitlines()
-        nodes = {
+        return {
             node: state
             for node, state in map(make_node_tuple, node_lines)
-            if "CLOUD" in state.flags or "DYNAMIC_NORM" in state.flags
+            if {"CLOUD", "DYNAMIC_NORM"} & state
         }
-        return nodes
 
-    def slurm_node(self, nodename):
+    def slurm_node_state(self, nodename: str) -> Optional[Set[str]]:
         return self.slurm_nodes().get(nodename)
 
     @lru_cache(maxsize=1)

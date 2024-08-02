@@ -107,7 +107,7 @@ def _find_dynamic_node_status() -> NodeStatus:
     return NodeStatus.unchanged  # don't touch dynamic nodes
 
 
-def _find_tpu_node_status(nodename, state):
+def _find_tpu_node_status(nodename: str, lkp: util.Lookup) -> NodeStatus:
     ns = lkp.node_nodeset(nodename)
     tpuobj = TPU(ns)
     inst = tpuobj.get_node(nodename)
@@ -133,32 +133,30 @@ def _find_tpu_node_status(nodename, state):
         if len(tpus_int) == 1:
             inst = tpuobj.get_node(tpus_int[0])
         # if len(tpus_int ==0) this case is not relevant as this would be the case always that a TPU group is not running
+
+    state = lkp.slurm_node_state(nodename)
     if inst is None:
-        if state.base == "DOWN" and "POWERED_DOWN" in state.flags:
+        if {"DOWN", "POWERED_DOWN"} <= state:
             return NodeStatus.restore
-        if "POWERING_DOWN" in state.flags:
+        if "POWERING_DOWN" in state:
             return NodeStatus.restore
-        if "COMPLETING" in state.flags:
+        if "COMPLETING" in state:
             return NodeStatus.unbacked
-        if state.base != "DOWN" and not (
-            set(("POWER_DOWN", "POWERING_UP", "POWERING_DOWN", "POWERED_DOWN"))
-            & state.flags
-        ):
+        if not {"DOWN", "POWER_DOWN", "POWERING_UP", "POWERING_DOWN", "POWERED_DOWN"} & state:
             return NodeStatus.unbacked
         if lkp.is_static_node(nodename):
             return NodeStatus.resume
     elif (
         state is not None
-        and "POWERED_DOWN" not in state.flags
-        and "POWERING_DOWN" not in state.flags
+        and (not {"POWERED_DOWN", "POWERING_DOWN"} & state)
         and inst.state == TPU.State.STOPPED
     ):
         if tpuobj.preemptible:
             return NodeStatus.preempted
-        if not state.base.startswith("DOWN"):
+        if not any(f.startswith("DOWN") for f in state):
             return NodeStatus.terminated
     elif (
-        state is None or "POWERED_DOWN" in state.flags
+        state is None or "POWERED_DOWN" in state
     ) and inst.state == TPU.State.READY:
         return NodeStatus.orphan
     elif state is None:
@@ -169,59 +167,75 @@ def _find_tpu_node_status(nodename, state):
 
 
 def allow_power_down(state):
-    config = run(f"{lkp.scontrol} show config").stdout.rstrip()
-    m = re.search(r"SuspendExcStates\s+=\s+(?P<states>[\w\(\)]+)", config)
-    if not m:
-        log.warning("SuspendExcStates not found in Slurm config")
+    exc_states = util.suspend_exc_states()
+    if not exc_states:
         return True
-    states = set(m.group("states").split(","))
-    if "(null)" in states or bool(state & state.flags.union(state.base)):
+    if "(null)" in exc_states:
         return False
-    return True
+    return not exc_states & state
 
 
-def find_node_status(nodename):
+def find_node_status(nodename: str, lkp: util.Lookup) -> NodeStatus:
     """Determine node/instance status that requires action"""
-    state = lkp.slurm_node(nodename)
+    if lkp.node_is_ordinary(nodename):
+        return _find_ordinary_node_status(nodename, lkp)
 
     if lkp.node_is_dyn(nodename):
         return _find_dynamic_node_status()
 
     if lkp.node_is_tpu(nodename):
-        return _find_tpu_node_status(nodename, state)
+        return _find_tpu_node_status(nodename, lkp)
+    
+    return _find_unknown_node_status(nodename, lkp)
+    
+def _find_unknown_node_status(nodename: str, lkp: util.Lookup) -> NodeStatus:
+    # split below is workaround for VMs whose hostname is FQDN
+    # TODO: don't split nodenme, make sure incorrect value doesn't make into nodename
+    inst = lkp.instance(nodename.split(".")[0])
+    state = lkp.slurm_node_state(nodename)
 
+    if state is None and inst in None:
+        log.error(f"Node={nodename} violates invariant: state=None, inst=None")
+        return NodeStatus.unknown # we shouldn't get here
+    
+    if state is None:
+        return NodeStatus.orphan # member of deleted nodeset
+    
+    log.error(f"Node={nodename} is not a member of any recognizable nodeset")
+    return NodeStatus.unknown
+    
+
+def _find_ordinary_node_status(nodename: str, lkp: util.Lookup) -> NodeStatus:
+    state = lkp.slurm_node_state(nodename)
     # split below is workaround for VMs whose hostname is FQDN
     inst = lkp.instance(nodename.split(".")[0])
-    power_flags = frozenset(
-        ("POWER_DOWN", "POWERING_UP", "POWERING_DOWN", "POWERED_DOWN")
-    ) & (state.flags if state is not None else set())
+    power_flags = {"POWER_DOWN", "POWERING_UP", "POWERING_DOWN", "POWERED_DOWN"} & (state or set())
 
     if inst is None:
-        if "POWERING_UP" in state.flags:
+        if "POWERING_UP" in state:
             return NodeStatus.unchanged
-        if state.base == "DOWN" and "POWERED_DOWN" in state.flags:
+        if {"DOWN", "POWERED_DOWN"} <= state:
             return NodeStatus.restore
-        if "POWERING_DOWN" in state.flags:
+        if "POWERING_DOWN" in state:
             return NodeStatus.restore
-        if "COMPLETING" in state.flags:
+        if "COMPLETING" in state:
             return NodeStatus.unbacked
-        if state.base != "DOWN" and not power_flags:
+        if "DOWN" not in state and not power_flags:
             return NodeStatus.unbacked
-        if state.base == "DOWN" and not power_flags and allow_power_down(state):
+        if "DOWN" in state and not power_flags and allow_power_down(state):
             return NodeStatus.power_down
-        if "POWERED_DOWN" in state.flags and lkp.is_static_node(nodename):
+        if "POWERED_DOWN" in state and lkp.is_static_node(nodename):
             return NodeStatus.resume
     elif (
         state is not None
-        and "POWERED_DOWN" not in state.flags
-        and "POWERING_DOWN" not in state.flags
+        and not ({"POWERED_DOWN", "POWERING_DOWN"} & state)
         and inst.status == "TERMINATED"
     ):
         if inst.scheduling.preemptible:
             return NodeStatus.preempted
-        if not state.base.startswith("DOWN"):
+        if not any(f.startswith("DOWN") for f in state):
             return NodeStatus.terminated
-    elif (state is None or "POWERED_DOWN" in state.flags) and inst.status == "RUNNING":
+    elif (state is None or "POWERED_DOWN" in state) and inst.status == "RUNNING":
         log.info("%s is potential orphan node", nodename)
         age_threshold_seconds = 90
         inst_seconds_old = _seconds_since_timestamp(inst.creationTimestamp)
@@ -300,8 +314,8 @@ def do_node_update(status, nodes):
         """Error status, nodes shouldn't get in this status"""
         log.error(f"{count} nodes have unexpected status: ({hostlist})")
         first = next(iter(nodes))
-        state = lkp.slurm_node(first)
-        state = "{}+{}".format(state.base, "+".join(state.flags)) if state else "None"
+        state = lkp.slurm_node_state(first)
+        state = "{}+{}".format("+".join(state)) if state else "None"
         inst = lkp.instance(first)
         log.error(f"{first} state: {state}, instance status:{inst.status}")
 
