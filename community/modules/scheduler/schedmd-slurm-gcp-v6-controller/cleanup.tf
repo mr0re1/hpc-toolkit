@@ -12,38 +12,62 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Ordinary nodesets
 locals {
-  cleanup_dependencies_agg = flatten([
-    [
-      for ns in var.nodeset : [
-        ns.subnetwork_self_link,
-        [for an in ns.additional_networks : an.subnetwork]
-      ]
-    ],
-    [for ns in var.nodeset_tpu : ns.subnetwork],
-  ])
+  cleanup_nodeset_depenencies = {
+    for ns in var.nodeset : ns.nodeset_name => flatten([
+      ns.subnetwork_self_link,
+      [for an in ns.additional_networks : an.subnetwork]
+    ])
+  }
+
 }
 
-resource "null_resource" "cleanup_compute_depenencies" {
-  count = length(local.cleanup_dependencies_agg)
+resource "null_resource" "cleanup_nodeset_depenencies" {
+  for_each = local.cleanup_nodeset_depenencies
+  count    = length(each.value)
 }
 
-resource "null_resource" "cleanup_compute" {
-  count = var.enable_cleanup_compute ? 1 : 0
+resource "null_resource" "cleanup_nodeset" {
+  for_each = var.enable_cleanup_compute ? local.cleanup_nodeset_depenencies : {}
 
   triggers = {
     project_id               = var.project_id
     cluster_name             = local.slurm_cluster_name
+    nodeset_name             = each.key
     universe_domain          = var.universe_domain
     compute_endpoint_version = var.endpoint_versions.compute
     gcloud_path_override     = var.gcloud_path_override
   }
 
   provisioner "local-exec" {
-    command = "/bin/bash ${path.module}/scripts/cleanup_compute.sh ${self.triggers.project_id} ${self.triggers.cluster_name} ${self.triggers.universe_domain} ${self.triggers.compute_endpoint_version} ${self.triggers.gcloud_path_override}"
+    command = "/bin/bash ${path.module}/scripts/cleanup_compute.sh ${self.triggers.project_id} ${self.triggers.cluster_name} ${self.triggers.nodeset_name} ${self.triggers.universe_domain} ${self.triggers.compute_endpoint_version} ${self.triggers.gcloud_path_override}"
     when    = destroy
   }
 
   # Ensure that clean up is done before attempt to delete the networks
-  depends_on = [null_resource.cleanup_compute_depenencies]
+  depends_on = [null_resource.cleanup_nodeset_depenencies[each.key]]
+}
+
+
+# TPU nodesets
+resource "null_resource" "cleanup_nodeset_tpu" {
+  for_each = var.enable_cleanup_compute ? var.nodeset_tpu : []
+
+  triggers = {
+    project_id               = var.project_id
+    cluster_name             = local.slurm_cluster_name
+    nodeset_name             = each.value.nodeset_name
+    universe_domain          = var.universe_domain
+    compute_endpoint_version = var.endpoint_versions.compute
+    gcloud_path_override     = var.gcloud_path_override
+  }
+
+  provisioner "local-exec" {
+    command = "/bin/bash ${path.module}/scripts/cleanup_compute.sh ${self.triggers.project_id} ${self.triggers.cluster_name} ${self.triggers.nodeset_name} ${self.triggers.universe_domain} ${self.triggers.compute_endpoint_version} ${self.triggers.gcloud_path_override}"
+    when    = destroy
+  }
+
+  # Ensure that clean up is done before attempt to delete the networks
+  depends_on = [each.value.subnetwork]
 }

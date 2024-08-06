@@ -17,12 +17,13 @@ set -e -o pipefail
 
 project="$1"
 cluster_name="$2"
-universe_domain="$3"
-compute_endpoint_version="$4"
-gcloud_dir="$5"
+nodeset_name="$3"
+universe_domain="$4"
+compute_endpoint_version="$5"
+gcloud_dir="$6"
 
-if [[ -z "${project}" || -z "${cluster_name}" || -z "${universe_domain}" || -z "${compute_endpoint_version}" ]]; then
-	echo "Usage: $0 <project> <cluster_name> <universe_domain> <compute_endpoint_version> <gcloud_dir>"
+if [[ -z "${project}" || -z "${cluster_name}" || -z "${nodeset_name}" || -z "${universe_domain}" || -z "${compute_endpoint_version}" ]]; then
+	echo "Usage: $0 <project> <cluster_name> <nodeset_name> <universe_domain> <compute_endpoint_version> <gcloud_dir>"
 	exit 1
 fi
 
@@ -39,7 +40,7 @@ if ! type -P gcloud 1>/dev/null; then
 fi
 
 echo "Deleting compute nodes"
-node_filter="labels.slurm_cluster_name=${cluster_name} AND labels.slurm_instance_role=compute"
+node_filter="labels.slurm_cluster_name=${cluster_name}-${nodeset_name} AND labels.slurm_instance_role=compute"
 while true; do
 	nodes=$(bash -c "$API_ENDPOINT gcloud compute instances list --project \"${project}\" --format=\"value(selfLink)\" --filter=\"${node_filter}\" --limit=10 | paste -sd \" \" -")
 	if [[ -z "${nodes}" ]]; then
@@ -52,7 +53,7 @@ while true; do
 done
 
 echo "Deleting resource policies"
-policies_filter="name:${cluster_name}-*"
+policies_filter="name:${cluster_name}-${nodeset_name}-*"
 while true; do
 	policies=$(bash -c "$API_ENDPOINT gcloud compute resource-policies list --project \"${project}\" --format=\"value(selfLink)\" --filter=\"${policies_filter}\" --limit=10 | paste -sd \" \" -")
 	if [[ -z "${policies}" ]]; then
