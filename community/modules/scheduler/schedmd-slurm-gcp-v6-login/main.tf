@@ -55,7 +55,11 @@ locals {
 
 
   login_node = {
-    name_prefix         = local.name_prefix
+    group_name = local.name_prefix
+    # TODO: stop using `name_prefix`, use `group_name` instead
+    name_prefix   = local.name_prefix
+    num_instances = var.num_instances
+
     disk_auto_delete    = var.disk_auto_delete
     disk_labels         = merge(var.disk_labels, local.labels)
     disk_size_gb        = var.disk_size_gb
@@ -77,7 +81,6 @@ locals {
     machine_type        = var.machine_type
     metadata            = local.metadata
     min_cpu_platform    = var.min_cpu_platform
-    num_instances       = var.num_instances
     on_host_maintenance = var.on_host_maintenance
     preemptible         = var.preemptible
     region              = var.region
@@ -94,6 +97,9 @@ locals {
 
     subnetwork = var.subnetwork_self_link
     tags       = var.tags
+
+    network_storage         = var.network_storage
+    startup_scripts_timeout = var.startup_scripts_timeout
   }
 }
 

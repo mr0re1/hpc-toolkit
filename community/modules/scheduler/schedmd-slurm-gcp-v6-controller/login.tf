@@ -24,21 +24,24 @@ module "slurm_login_template" {
   slurm_bucket_path   = module.slurm_files.slurm_bucket_path
   name_prefix         = each.value.name_prefix
 
-  additional_disks         = each.value.additional_disks
-  bandwidth_tier           = each.value.bandwidth_tier
-  can_ip_forward           = each.value.can_ip_forward
-  disable_smt              = each.value.disable_smt
-  disk_auto_delete         = each.value.disk_auto_delete
-  disk_labels              = each.value.disk_labels
-  disk_size_gb             = each.value.disk_size_gb
-  disk_type                = each.value.disk_type
-  enable_confidential_vm   = each.value.enable_confidential_vm
-  enable_oslogin           = each.value.enable_oslogin
-  enable_shielded_vm       = each.value.enable_shielded_vm
-  gpu                      = each.value.gpu
-  labels                   = each.value.labels
-  machine_type             = each.value.machine_type
-  metadata                 = merge(each.value.metadata, local.universe_domain)
+  additional_disks       = each.value.additional_disks
+  bandwidth_tier         = each.value.bandwidth_tier
+  can_ip_forward         = each.value.can_ip_forward
+  disable_smt            = each.value.disable_smt
+  disk_auto_delete       = each.value.disk_auto_delete
+  disk_labels            = each.value.disk_labels
+  disk_size_gb           = each.value.disk_size_gb
+  disk_type              = each.value.disk_type
+  enable_confidential_vm = each.value.enable_confidential_vm
+  enable_oslogin         = each.value.enable_oslogin
+  enable_shielded_vm     = each.value.enable_shielded_vm
+  gpu                    = each.value.gpu
+  labels                 = each.value.labels
+  machine_type           = each.value.machine_type
+  metadata = merge(
+    each.value.metadata,
+    local.universe_domain,
+  { "slurm_login_group" : each.value.group_name })
   min_cpu_platform         = each.value.min_cpu_platform
   on_host_maintenance      = each.value.on_host_maintenance
   preemptible              = each.value.preemptible

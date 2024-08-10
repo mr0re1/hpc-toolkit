@@ -117,15 +117,7 @@ variable "enable_smt" {
   default     = false
 }
 
-variable "disable_smt" { # tflint-ignore: terraform_unused_declarations
-  description = "DEPRECATED: Use `enable_smt` instead."
-  type        = bool
-  default     = null
-  validation {
-    condition     = var.disable_smt == null
-    error_message = "DEPRECATED: Use `enable_smt` instead."
-  }
-}
+
 
 variable "static_ips" {
   type        = list(string)
@@ -162,17 +154,6 @@ variable "enable_login_public_ips" {
   description = "If set to true. The login node will have a random public IP assigned to it."
   type        = bool
   default     = false
-}
-
-
-variable "disable_login_public_ips" { # tflint-ignore: terraform_unused_declarations
-  description = "DEPRECATED: Use `enable_login_public_ips` instead."
-  type        = bool
-  default     = null
-  validation {
-    condition     = var.disable_login_public_ips == null
-    error_message = "DEPRECATED: Use `enable_login_public_ips` instead."
-  }
 }
 
 variable "enable_oslogin" {
@@ -288,29 +269,6 @@ variable "service_account_scopes" {
   default     = ["https://www.googleapis.com/auth/cloud-platform"]
 }
 
-variable "service_account" { # tflint-ignore: terraform_unused_declarations
-  description = "DEPRECATED: Use `service_account_email` and `service_account_scopes` instead."
-  type = object({
-    email  = string
-    scopes = set(string)
-  })
-  default = null
-  validation {
-    condition     = var.service_account == null
-    error_message = "DEPRECATED: Use `service_account_email` and `service_account_scopes` instead."
-  }
-}
-
-variable "instance_template" { # tflint-ignore: terraform_unused_declarations
-  description = "DEPRECATED: Instance template can not be specified for login nodes."
-  type        = string
-  default     = null
-  validation {
-    condition     = var.instance_template == null
-    error_message = "DEPRECATED: Instance template can not be specified for login nodes."
-  }
-}
-
 variable "instance_image" {
   description = <<-EOD
     Defines the image that will be used in the Slurm controller VM instance.
@@ -376,4 +334,74 @@ variable "tags" {
 variable "subnetwork_self_link" {
   type        = string
   description = "Subnet to deploy to."
+}
+
+variable "network_storage" {
+  description = "An array of network attached storage mounts to be configured on nodes."
+  type = list(object({
+    server_ip     = string,
+    remote_mount  = string,
+    local_mount   = string,
+    fs_type       = string,
+    mount_options = string,
+  }))
+  default = []
+}
+
+variable "startup_scripts_timeout" {
+  description = <<EOD
+The timeout (seconds) applied to each startup script. 
+If any script exceeds this timeout, then the instance setup process is considered
+failed and handled accordingly.
+
+NOTE: When set to 0, the timeout is considered infinite and thus disabled.
+EOD
+  type        = number
+  default     = 300
+}
+
+
+# DEPRECATED VARIABLES
+
+variable "disable_login_public_ips" { # tflint-ignore: terraform_unused_declarations
+  description = "DEPRECATED: Use `enable_login_public_ips` instead."
+  type        = bool
+  default     = null
+  validation {
+    condition     = var.disable_login_public_ips == null
+    error_message = "DEPRECATED: Use `enable_login_public_ips` instead."
+  }
+}
+
+variable "instance_template" { # tflint-ignore: terraform_unused_declarations
+  description = "DEPRECATED: Instance template can not be specified for login nodes."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.instance_template == null
+    error_message = "DEPRECATED: Instance template can not be specified for login nodes."
+  }
+}
+
+variable "disable_smt" { # tflint-ignore: terraform_unused_declarations
+  description = "DEPRECATED: Use `enable_smt` instead."
+  type        = bool
+  default     = null
+  validation {
+    condition     = var.disable_smt == null
+    error_message = "DEPRECATED: Use `enable_smt` instead."
+  }
+}
+
+variable "service_account" { # tflint-ignore: terraform_unused_declarations
+  description = "DEPRECATED: Use `service_account_email` and `service_account_scopes` instead."
+  type = object({
+    email  = string
+    scopes = set(string)
+  })
+  default = null
+  validation {
+    condition     = var.service_account == null
+    error_message = "DEPRECATED: Use `service_account_email` and `service_account_scopes` instead."
+  }
 }

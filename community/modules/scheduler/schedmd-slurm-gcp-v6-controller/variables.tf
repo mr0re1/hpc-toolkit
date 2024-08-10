@@ -94,6 +94,7 @@ variable "bucket_dir" {
 variable "login_nodes" {
   description = "List of slurm login instance definitions."
   type = list(object({
+    group_name  = string
     name_prefix = string
     access_config = optional(list(object({
       nat_ip       = string
@@ -168,6 +169,19 @@ variable "login_nodes" {
     tags                 = optional(list(string), [])
     zone                 = optional(string)
     termination_action   = optional(string)
+    network_storage = list(object({
+      server_ip             = string
+      remote_mount          = string
+      local_mount           = string
+      fs_type               = string
+      mount_options         = string
+      client_install_runner = optional(map(string))
+      mount_runner          = optional(map(string))
+    }))
+    startup_script = list(object({
+      filename = string
+    content = string }))
+    startup_scripts_timeout = number
   }))
   default = []
   validation {
@@ -442,18 +456,6 @@ variable "network_storage" {
   default = []
 }
 
-variable "login_network_storage" {
-  description = "An array of network attached storage mounts to be configured on all login nodes."
-  type = list(object({
-    server_ip     = string,
-    remote_mount  = string,
-    local_mount   = string,
-    fs_type       = string,
-    mount_options = string,
-  }))
-  default = []
-}
-
 variable "slurmdbd_conf_tpl" {
   description = "Slurm slurmdbd.conf template file path."
   type        = string
@@ -481,24 +483,6 @@ variable "controller_startup_script" {
 variable "controller_startup_scripts_timeout" {
   description = <<EOD
 The timeout (seconds) applied to each script in controller_startup_scripts. If
-any script exceeds this timeout, then the instance setup process is considered
-failed and handled accordingly.
-
-NOTE: When set to 0, the timeout is considered infinite and thus disabled.
-EOD
-  type        = number
-  default     = 300
-}
-
-variable "login_startup_script" {
-  description = "Startup script used by the login VMs."
-  type        = string
-  default     = "# no-op"
-}
-
-variable "login_startup_scripts_timeout" {
-  description = <<EOD
-The timeout (seconds) applied to each script in login_startup_scripts. If
 any script exceeds this timeout, then the instance setup process is considered
 failed and handled accordingly.
 
@@ -657,5 +641,37 @@ variable "disable_default_mounts" { # tflint-ignore: terraform_unused_declaratio
   validation {
     condition     = var.disable_default_mounts == null
     error_message = "DEPRECATED: Use `enable_default_mounts` instead."
+  }
+}
+
+variable "login_network_storage" { # tflint-ignore: terraform_unused_declarations
+  description = "DEPRECATED: Specify `network_storage` on login module instead."
+  type = list(object({
+    server_ip     = string,
+    remote_mount  = string,
+    local_mount   = string,
+    fs_type       = string,
+    mount_options = string,
+  }))
+  default = null
+  validation {
+    condition     = var.login_network_storage == null
+    error_message = "DEPRECATED: Specify `network_storage` on login module instead."
+  }
+}
+
+variable "login_startup_script" { # tflint-ignore: terraform_unused_declarations
+  description = "Startup script used by the login VMs."
+  type        = string
+  default     = "# no-op"
+}
+
+variable "login_startup_scripts_timeout" { # tflint-ignore: terraform_unused_declarations
+  description = "DEPRECATED: Specify `startup_scripts_timeout` on login module instead."
+  type        = number
+  default     = null
+  validation {
+    condition     = var.login_startup_scripts_timeout == null
+    error_message = "DEPRECATED: Specify `startup_scripts_timeout` on login module instead."
   }
 }

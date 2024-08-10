@@ -54,12 +54,10 @@ locals {
     # storage
     disable_default_mounts = var.disable_default_mounts
     network_storage        = var.network_storage
-    login_network_storage  = var.enable_hybrid ? null : var.login_network_storage
 
     # timeouts
     controller_startup_scripts_timeout = var.enable_hybrid ? null : var.controller_startup_scripts_timeout
     compute_startup_scripts_timeout    = var.compute_startup_scripts_timeout
-    login_startup_scripts_timeout      = var.enable_hybrid ? null : var.login_startup_scripts_timeout
     munge_mount                        = local.munge_mount
 
     # slurm conf
@@ -151,6 +149,13 @@ resource "google_storage_bucket_object" "nodeset_tpu_config" {
 
   bucket  = data.google_storage_bucket.this.name
   name    = "${local.bucket_dir}/nodeset_tpu_configs/${each.key}.yaml"
+}
+
+resource "google_storage_bucket_object" "login_config" {
+  for_each = { for l in var.login : l.group_name => l }
+
+  bucket  = data.google_storage_bucket.this.name
+  name    = "${local.bucket_dir}/login_configs/${each.key}.yaml"
   content = yamlencode(each.value)
 }
 
@@ -226,14 +231,18 @@ resource "google_storage_bucket_object" "nodeset_startup_scripts" {
 }
 
 resource "google_storage_bucket_object" "login_startup_scripts" {
-  for_each = {
-    for x in var.login_startup_scripts
-    : replace(basename(x.filename), "/[^a-zA-Z0-9-_]/", "_") => x
-  }
+  for_each = { for x in flatten([
+    for login, scripts in var.login_startup_scripts
+    : [for s in scripts
+      : {
+        content = s.content,
+      name = format("slurm-login-%s-script-%s", login, replace(basename(s.filename), "/[^a-zA-Z0-9-_]/", "_")) }
+  ]]) : x.name => x.content }
+
 
   bucket  = var.bucket_name
-  name    = format("%s/slurm-login-script-%s", local.bucket_dir, each.key)
-  content = each.value.content
+  name    = format("%s/%s", local.bucket_dir, each.key)
+  content = each.value
 }
 
 resource "google_storage_bucket_object" "prolog_scripts" {

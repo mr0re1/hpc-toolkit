@@ -90,10 +90,11 @@ locals {
     local.daos_mount_runners,
   )
 
-  daos_install_mount_script = {
+  daos_install_mount_scripts = length(local.daos_ns) > 0 ? [{
     filename = "ghpc_daos_mount.sh"
-    content  = length(local.daos_ns) > 0 ? module.daos_network_storage_scripts[0].startup_script : ""
-  }
+  content = module.daos_network_storage_scripts[0].startup_script }] : []
+
+  additional_scripts = local.daos_install_mount_scripts
 }
 
 # SLURM FILES
@@ -102,20 +103,17 @@ locals {
     filename = "ghpc_startup.sh"
     content  = var.controller_startup_script
   }
-  ghpc_startup_script_controller = length(local.daos_ns) > 0 ? [local.daos_install_mount_script, local.ghpc_startup_controller] : [local.ghpc_startup_controller]
+  ghpc_startup_script_controller = concat(local.additional_scripts, [local.ghpc_startup_controller])
 
-  ghpc_startup_login = {
-    filename = "ghpc_startup.sh"
-    content  = var.login_startup_script
-  }
-  ghpc_startup_script_login = length(local.daos_ns) > 0 ? [local.daos_install_mount_script, local.ghpc_startup_login] : [local.ghpc_startup_login]
+  login_startup_scripts = { for l in var.login_nodes : l.group_name => concat(local.additional_scripts, l.startup_script) }
 
   ghpc_startup_compute = {
     filename = "ghpc_startup.sh"
     content  = var.compute_startup_script
   }
-  ghpc_startup_script_compute = length(local.daos_ns) > 0 ? [local.daos_install_mount_script, local.ghpc_startup_compute] : [local.ghpc_startup_compute]
+  ghpc_startup_script_compute = concat(local.additional_scripts, [local.ghpc_startup_compute])
 
+  # NOTE: Don't add `additional_scripts` per nodeset, since they are already included in the `ghpc_startup_script_compute`
   nodeset_startup_scripts = { for k, v in local.nodeset_map : k => v.startup_script }
 }
 
@@ -151,8 +149,7 @@ module "slurm_files" {
   nodeset_startup_scripts            = local.nodeset_startup_scripts
   compute_startup_scripts            = local.ghpc_startup_script_compute
   compute_startup_scripts_timeout    = var.compute_startup_scripts_timeout
-  login_startup_scripts              = local.ghpc_startup_script_login
-  login_startup_scripts_timeout      = var.login_startup_scripts_timeout
+  login_startup_scripts              = local.login_startup_scripts
 
   enable_debug_logging = var.enable_debug_logging
   extra_logging_flags  = var.extra_logging_flags
@@ -174,7 +171,6 @@ module "slurm_files" {
     }
     if storage.fs_type != "daos"
   ]
-  login_network_storage = var.login_network_storage
 
   partitions = var.partitions
 
