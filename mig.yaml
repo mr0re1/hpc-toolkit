@@ -1,0 +1,54 @@
+# Copyright 2022 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+---
+
+blueprint_name: hpc-slurm
+
+vars:
+  project_id: io-playground
+  deployment_name: dyndyn
+  region: us-central1
+  zone: us-central1-a
+
+deployment_groups:
+- group: primary
+  modules:
+  - id: network
+    source: modules/network/vpc
+
+  - id: dynamic_ns
+    source: community/modules/compute/schedmd-slurm-gcp-v6-nodeset-dynamic
+    use: [network, controller]
+    settings:
+      machine_type: n2-standard-2
+
+  - id: dynamic_partition
+    source: community/modules/compute/schedmd-slurm-gcp-v6-partition
+    use: [dynamic_ns]
+    settings:
+      partition_name: mp
+      is_default: true
+
+  - id: controller
+    source: community/modules/scheduler/schedmd-slurm-gcp-v6-controller
+    use: [network, dynamic_partition]
+
+  - id: mig
+    source: community/modules/compute/mig
+    settings:
+      versions:
+      - name: highlander # there can be only one
+        instance_template: $(dynamic_ns.instance_template_self_link)
+      base_instance_name: $(dynamic_ns.node_name_prefix)

@@ -1,0 +1,57 @@
+---
+
+blueprint_name: mikoyan2
+
+vars:
+  project_id: io-playground
+  deployment_name: mikoyan2
+  region: us-central1
+  zone: us-central1-a
+  
+deployment_groups:
+- group: primary
+  modules:
+  - id: network
+    source: modules/network/vpc
+
+  # Setup the cluster first
+  - id: mig_partition
+    source: community/modules/compute/schedmd-slurm-gcp-v6-partition
+    use:
+    - dynamic_template # it will add a nodeset to this partition
+    settings:
+      partition_name: mp
+      is_default: true
+  
+  - id: controller
+    source: ./community/modules/scheduler/schedmd-slurm-gcp-v6-controller
+    use: [network, mig_partition]
+    settings:
+      enable_controller_public_ips: true
+      enable_debug_logging: true
+      enable_cleanup_compute: false
+
+  # Add template
+  - id: dynamic_template
+    source: ./community/modules/compute/schedmd-slurm-gcp-v6-dynamic-node-template
+    use:
+    - network
+    - controller # to get slurm_cluster_name, slurm_bucket_path
+    settings:
+      nodeset_name: mn
+      machine_type: n2-standard-2
+      resource_policies: ["https://www.googleapis.com/compute/v1/projects/io-playground/regions/us-central1/resourcePolicies/bahcha"]
+    outputs: [self_link] # to be outputed in CLI, remove if not needed
+
+  # Create a MIG, 
+  # alternatively MIG can be created outside of the Toolkit, 
+  # but the template created above should be used
+
+  - id: mig
+    source: community/modules/compute/mig
+    settings:
+      versions:
+      - name: highlander # There can be only one
+        instance_template: $(dynamic_template.self_link)
+      # temporary workaround for SlurmGCP bug
+      base_instance_name: $(dynamic_template.node_name_prefix)

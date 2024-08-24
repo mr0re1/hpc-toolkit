@@ -1,0 +1,275 @@
+# Copyright 2022 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+---
+
+blueprint_name: hpc-slurm
+
+vars:
+  project_id: io-playground
+  deployment_name: dyndyn
+  region: europe-west1
+  zone: europe-west1-stagingb # Must be staging zone
+  # instance_image:
+  #   name:  slurm-gcp-6-5-hpc-rocky-linux-8-20240708t205759z
+  #   project: $(vars.project_id)
+  #instance_image_custom: true
+
+  native_image:
+    family: rocky-linux-8
+    project: gce-staging-images
+
+  machine_type: n2d-highcpu-4
+  compute_version: "staging_v1"
+  compute_beta_version: "staging_beta"
+
+validators:
+  - validator: test_zone_exists
+    skip: true
+  - validator: test_zone_in_region
+    skip: true
+
+terraform_providers:
+  google:
+    source: hashicorp/google
+    version: ~> 5.13.0
+    configuration:
+      project: $(vars.project_id)
+      region: $(vars.region)
+      zone: $(vars.zone)
+      compute_custom_endpoint: https://www.googleapis.com/compute/$(vars.compute_version)/
+  google-beta:
+    source: hashicorp/google-beta
+    version: ~> 5.13.0
+    configuration:
+      project: $(vars.project_id)
+      region: $(vars.region)
+      zone: $(vars.zone)
+      compute_custom_endpoint: "https://www.googleapis.com/compute/$(vars.compute_beta_version)/"      
+
+
+deployment_groups:
+- group: primary
+  modules:
+  - id: network
+    source: modules/network/vpc
+    settings:
+      network_name: group2-net
+      subnetwork_name: group2-subnet
+      allowed_ssh_ip_ranges: [0.0.0.0/0] # Default range does not work for ssh
+
+  # - id: network_default
+  #   source: modules/network/vpc
+
+  # NATIVE image
+  - id: native0 # try#1: OK | try#2:  Permission denied
+    source: modules/compute/vm-instance
+    use: [network]
+    settings:
+      name_prefix: native0
+      instance_image: $(vars.native_image)
+      metadata:
+        "startup-script": |
+          #! /bin/bash
+          echo "GGGG FAIL"
+          exit 1
+
+  - id: native1 # try#1: OK | try#2: TIMEOUT
+    source: modules/compute/vm-instance
+    use: [network]
+    settings:
+      name_prefix: native1
+      instance_image: $(vars.native_image)
+      metadata:
+        "startup-script": |
+          #! /bin/bash
+          echo "GGGG OK"
+          exit 0
+
+  - id: native2 # try#1: Permission denied | try#2: TIMEOUT
+    source: modules/compute/vm-instance
+    use: [network]
+    settings:
+      name_prefix: native2
+      instance_image: $(vars.native_image)
+      metadata:
+        "startup-script": ""
+
+  - id: native3 # try#1: OK | try#2: OK
+    source: modules/compute/vm-instance
+    use: [network]
+    settings:
+      name_prefix: native3
+      instance_image: $(vars.native_image)
+      metadata:
+        "startup-script": |
+          #! /bin/bash
+          echo "GGGG OK"
+
+  # - id: vm # can SSH
+  #   source: modules/compute/vm-instance
+  #   use: [network]
+  #   settings:
+  #     name_prefix: customnet
+  #     instance_image: $(vars.instance_image)
+
+  # - id: vm_dns # can SSH
+  #   source: modules/compute/vm-instance
+  #   use: [network]
+  #   settings:
+  #     name_prefix: customnet2
+  #     instance_image: $(vars.instance_image)
+  #     metadata:
+  #       VmDnsSetting: GlobalOnly
+
+  # - id: vm_dns_tags # can SSH
+  #   source: modules/compute/vm-instance
+  #   use: [network]
+  #   settings:
+  #     name_prefix: customnet3
+  #     instance_image: $(vars.instance_image)
+  #     metadata:
+  #       VmDnsSetting: GlobalOnly
+  #     tags: [dyndyn]
+
+  # - id: vm_mtd  # can NOT SSH !!!
+  #   source: modules/compute/vm-instance
+  #   use: [network]
+  #   settings:
+  #     name_prefix: customnet4
+  #     instance_image: $(vars.instance_image)
+  #     metadata: $(controller.slurm_controller_instance.metadata)
+  #     tags: [dyndyn]
+
+  # - id: vm_mtd2 # can NOT SSH !!!
+  #   source: modules/compute/vm-instance
+  #   use: [network]
+  #   settings:
+  #     name_prefix: customnet5
+  #     instance_image: $(vars.instance_image)
+  #     metadata: '$(merge(controller.slurm_controller_instance.metadata, {"startup-script": ""}))'
+  #     tags: [dyndyn]
+
+  # - id: vm_mtd3  # can NOT SSH !!!
+  #   source: modules/compute/vm-instance
+  #   use: [network]
+  #   settings:
+  #     name_prefix: customnet6
+  #     metadata:
+  #       "startup-script": $(controller.slurm_controller_instance.metadata["startup-script"])
+  #     tags: [dyndyn]
+  #
+  # - id: vm_mtd4  # can SSH | can not SSH
+  #   source: modules/compute/vm-instance
+  #   use: [network]
+  #   settings:
+  #     name_prefix: customnet7
+  #     metadata:
+  #       "startup-script": ""
+  #     tags: [dyndyn]
+
+  # - id: vm_fail_ss  # can NOT SSH | can not SSH
+  #   source: modules/compute/vm-instance
+  #   use: [network]
+  #   settings:
+  #     name_prefix: customnet8
+  #     metadata:
+  #       "startup-script": |
+  #         #! /bin/bash
+  #         echo "GGGG FAIL"
+  #         exit 1
+
+  # - id: vm_ok_ss  # can NOT SSH | can not SSH
+  #   source: modules/compute/vm-instance
+  #   use: [network]
+  #   settings:
+  #     name_prefix: customnet9
+  #     metadata:
+  #       "startup-script": |
+  #         #! /bin/bash
+  #         echo "GGGG OK"
+  #         exit 0
+
+  # - id: vm_no_ss  # can NOT SSH | can SSH
+  #   source: modules/compute/vm-instance
+  #   use: [network]
+  #   settings:
+  #     name_prefix: customneta
+  #     metadata:
+  #       "startup-script": ""
+
+  # - id: vm_no_exit_ss # can SSH | can SSH
+  #   source: modules/compute/vm-instance
+  #   use: [network]
+  #   settings:
+  #     name_prefix: customnetb
+  #     metadata:
+  #       "startup-script": |
+  #         #! /bin/bash
+  #         echo "GGGG OK"
+
+  
+
+  # - id: vm2 #  can NOT SSH
+  #   source: modules/compute/vm-instance
+  #   use: [network_default]
+  #   settings:
+  #     name_prefix: defnet
+  #     instance_image: $(vars.instance_image)
+
+  # - id: dynamic_ns
+  #   source: community/modules/compute/schedmd-slurm-gcp-v6-nodeset-dynamic
+  #   use: [network, controller]
+  #   settings:
+  #     machine_type: n1-standard-4
+
+  # - id: dynamic_partition
+  #   source: community/modules/compute/schedmd-slurm-gcp-v6-partition
+  #   use: [dynamic_ns]
+  #   settings:
+  #     partition_name: mp
+  #     is_default: true
+
+  # - id: controller # can NOT SSH
+  #   source: community/modules/scheduler/schedmd-slurm-gcp-v6-controller
+  #   use: [network, dynamic_partition]
+  #   settings:
+  #     enable_controller_public_ips: true
+  #     endpoint_versions:
+  #       compute: $(vars.compute_beta_version) # Slurm generally uses the beta version of the API
+
+
+  # - id: mig_sd
+  #   source: ./community/modules/compute/mig
+  #   settings:
+  #     versions:
+  #     - name: highlander # there can be only one
+  #       instance_template: $(dynamic_ns.instance_template_self_link)
+  #     base_instance_name: $(dynamic_ns.node_name_prefix)-#
+
+  # - id: mig_td
+  #   source: ./community/modules/compute/mig
+  #   settings:
+  #     versions:
+  #     - name: highlander # there can be only one
+  #       instance_template: $(dynamic_ns.instance_template_self_link)
+  #     base_instance_name: $(dynamic_ns.node_name_prefix)-###
+
+  # - id: mig_off
+  #   source: ./community/modules/compute/mig
+  #   settings:
+  #     versions:
+  #     - name: highlander # there can be only one
+  #       instance_template: $(dynamic_ns.instance_template_self_link)
+  #     base_instance_name: $(dynamic_ns.node_name_prefix)-###[69]
