@@ -35,13 +35,25 @@ import (
 // representation of a reference text
 type Reference struct {
 	GlobalVar bool
-	Module    ModuleID // should be empty if GlobalVar. otherwise required
+	Module    ModuleID // should be empty if GlobalVar. otherwise empty implies local var reference
 	Name      string   // required
 }
 
 // GlobalRef returns a reference to a global variable
 func GlobalRef(n string) Reference {
 	return Reference{GlobalVar: true, Name: n}
+}
+
+func LocalRef(n string) Reference {
+	return Reference{Name: n}
+}
+
+func (r Reference) IsLocalVar() bool {
+	return !r.GlobalVar && !r.IsModuleOutput()
+}
+
+func (r Reference) IsModuleOutput() bool {
+	return r.Module != ""
 }
 
 // ModuleRef returns a reference to a module output
@@ -53,6 +65,9 @@ func ModuleRef(m ModuleID, n string) Reference {
 func (r Reference) AsExpression() Expression {
 	if r.GlobalVar {
 		return MustParseExpression(fmt.Sprintf("var.%s", r.Name))
+	}
+	if r.IsLocalVar() {
+		return MustParseExpression(fmt.Sprintf("local.%s", r.Name))
 	}
 	return MustParseExpression(fmt.Sprintf("module.%s.%s", r.Module, r.Name))
 }
@@ -78,6 +93,9 @@ func bpTraversalToTerraform(t hcl.Traversal) (hcl.Traversal, error) {
 
 	if t.RootName() == "vars" {
 		root := hcl.TraverseRoot{Name: "var"}
+		return append([]hcl.Traverser{root}, t[1:]...), nil
+	} else if t.RootName() == "locals" {
+		root := hcl.TraverseRoot{Name: "local"}
 		return append([]hcl.Traverser{root}, t[1:]...), nil
 	} else {
 		root := hcl.TraverseRoot{Name: "module"}
@@ -126,12 +144,13 @@ func TraversalToReference(t hcl.Traversal) (Reference, error) {
 		return "", fmt.Errorf("got unexpected traversal component: %#v", t[i])
 	}
 	switch root := t.RootName(); root {
-	case "var":
+	case "var", "local":
 		n, err := getAttrName(1)
 		if err != nil {
-			return Reference{}, fmt.Errorf("expected second component of global var reference to be a variable name, got %w", err)
+			return Reference{}, fmt.Errorf("expected second component of var reference to be a variable name, got %w", err)
 		}
-		return GlobalRef(n), nil
+		return Reference{GlobalVar: root == "var", Name: n}, nil
+
 	case "module":
 		m, err := getAttrName(1)
 		if err != nil {

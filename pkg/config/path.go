@@ -167,6 +167,7 @@ type groupPath struct {
 	Name     basePath              `path:".group"`
 	Backend  backendPath           `path:".terraform_backend"`
 	Provider mapPath[providerPath] `path:".terraform_provider"`
+	Locals   dictPath              `path:".locals"`
 	Modules  arrayPath[ModulePath] `path:".modules"`
 }
 

@@ -404,6 +404,12 @@ func validateModuleSettingReference(bp Blueprint, mod Module, r Reference) error
 		return nil
 	}
 
+	g := bp.ModuleGroupOrDie(mod.ID)
+	if r.IsLocalVar() && !g.Locals.Has(r.Name) {
+		err := fmt.Errorf("module %q references unknown local variable %q", mod.ID, r.Name)
+		return HintSpelling(r.Name, g.Locals.Keys(), err)
+	}
+
 	if err := validateModuleReference(bp, mod, r.Module); err != nil {
 		var unkModErr UnknownModuleError
 		if errors.As(err, &unkModErr) {
@@ -449,7 +455,7 @@ func FindIntergroupReferences(v cty.Value, mod Module, bp Blueprint) []Reference
 	g := bp.ModuleGroupOrDie(mod.ID)
 	res := []Reference{}
 	for r := range valueReferences(v) {
-		if !r.GlobalVar && bp.ModuleGroupOrDie(r.Module).Name != g.Name {
+		if r.IsModuleOutput() && bp.ModuleGroupOrDie(r.Module).Name != g.Name {
 			res = append(res, r)
 		}
 	}

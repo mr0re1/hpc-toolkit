@@ -145,6 +145,7 @@ func writeVariables(vars map[string]cty.Value, extraVars []modulereader.VarInfo,
 
 func writeMain(
 	modules []config.Module,
+	locals config.Dict,
 	tfBackend config.TerraformBackend,
 	dst string,
 ) error {
@@ -160,6 +161,15 @@ func writeMain(
 		vals := tfBackend.Configuration.Items()
 		for _, setting := range orderKeys(vals) {
 			backendBody.SetAttributeValue(setting, vals[setting])
+		}
+	}
+
+	if !locals.IsZero() {
+		hclBody.AppendNewline()
+		b := hclBody.AppendNewBlock("locals", []string{}).Body()
+		for _, setting := range orderKeys(locals.Items()) {
+			value := locals.Get(setting)
+			b.SetAttributeRaw(setting, config.TokensForValue(value))
 		}
 	}
 
@@ -261,7 +271,7 @@ func (w TFWriter) writeGroup(
 	if err != nil {
 		return fmt.Errorf("error substituting intergroup references in deployment group %s: %w", g.Name, err)
 	}
-	if err := writeMain(doctoredModules, g.TerraformBackend, groupPath); err != nil {
+	if err := writeMain(doctoredModules, g.Locals, g.TerraformBackend, groupPath); err != nil {
 		return fmt.Errorf("error writing main.tf file for deployment group %s: %w", g.Name, err)
 	}
 

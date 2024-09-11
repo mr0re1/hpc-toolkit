@@ -83,7 +83,7 @@ func validateGlobalLabels(bp Blueprint) error {
 
 // validateVars checks the global variables for viable types
 func validateVars(bp Blueprint) error {
-	if _, err := varsTopologicalOrder(bp.Vars); err != nil {
+	if _, err := topologicalOrderDeclarations(bp.Vars, true); err != nil {
 		return err
 	}
 
@@ -97,6 +97,24 @@ func validateVars(bp Blueprint) error {
 			errs.At(Root.Vars.Dot(key), fmt.Errorf("deployment variable %q was not set", key))
 		}
 	}
+	return errs.OrNil()
+}
+
+func validateGroupsLocal(pg groupPath, g Group) error {
+	l := g.Locals
+
+	if l.IsZero() {
+		return nil
+	}
+	if g.Kind() != TerraformKind {
+		return BpError{pg.Locals, errors.New("locals-block is only supported for terraform groups")}
+	}
+
+	errs := Errors{}
+	if _, err := topologicalOrderDeclarations(l, false); err != nil {
+		errs.Add(err)
+	}
+	// !!!
 	return errs.OrNil()
 }
 

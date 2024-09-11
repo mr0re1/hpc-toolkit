@@ -72,6 +72,7 @@ type Group struct {
 	TerraformBackend   TerraformBackend             `yaml:"terraform_backend,omitempty"`
 	TerraformProviders map[string]TerraformProvider `yaml:"terraform_providers,omitempty"`
 	Modules            []Module                     `yaml:"modules"`
+	Locals             Dict                         `yaml:"locals,omitempty"`
 	// DEPRECATED fields
 	deprecatedKind interface{} `yaml:"kind,omitempty"` //lint:ignore U1000 keep in the struct for backwards compatibility
 }
@@ -415,6 +416,7 @@ func (bp Blueprint) ListUnusedVariables() []string {
 		for k, v := range grp.TerraformProviders {
 			ns["grp_"+string(grp.Name)+"_provider_"+k] = v.Configuration.AsObject()
 		}
+		ns["grp_"+string(grp.Name)+"_locals"] = grp.Locals.AsObject()
 	}
 
 	var used = map[string]bool{
@@ -519,6 +521,7 @@ func checkModulesAndGroups(bp Blueprint) error {
 				Hint: "separate each packer module into its own deployment group"})
 		}
 
+		errs.Add(validateGroupsLocal(grp, pg))
 		for im, mod := range grp.Modules {
 			pm := pg.Modules.At(im)
 			if seenMod[mod.ID] {
@@ -705,16 +708,21 @@ func (bp *Blueprint) checkReferences() error {
 		for k, v := range d.Items() {
 			for ref, rp := range valueReferences(v) {
 				path := dp.Dot(k).Cty(rp)
-				if !ref.GlobalVar {
+
+				if ref.IsModuleOutput() {
 					if !isModSettings {
 						errs.At(path, fmt.Errorf("module output %q can only be referenced in other module settings", ref))
 					}
 					// module to module references are checked by validateModuleSettingReferences later
-					return
+					return // TODO: looks like a bug, should be continue(?)
 				}
-				if !bp.Vars.Has(ref.Name) {
+
+				if ref.GlobalVar && !bp.Vars.Has(ref.Name) {
 					errs.At(path, fmt.Errorf("variable %q not found", ref.Name))
 				}
+
+				// !!! check for circular dependencies
+				// !!! check for valid local references
 			}
 		}
 	})
@@ -836,20 +844,26 @@ func validateModuleSettingReferences(p ModulePath, m Module, bp Blueprint) error
 	return errs.OrNil()
 }
 
-func varsTopologicalOrder(vars Dict) ([]string, error) {
+// topologicalOrderDeclarations returns a list of declarations in reverse topological order
+// `global` true if its 'bp.Vars', false otherwise.
+func topologicalOrderDeclarations(d Dict, global bool) ([]string, error) {
 	// 0, 1, 2 - unvisited, on stack, exited
 	used := map[string]int{} // default is 0 - unvisited
 	res := []string{}
 
-	// walk vars in reverse topological order
+	// walk declarations in reverse topological order
 	var dfs func(string) error
 	dfs = func(n string) error {
 		used[n] = 1 // put on stack
-		v := vars.Get(n)
+		v := d.Get(n)
 		for ref, rp := range valueReferences(v) {
-			p := Root.Vars.Dot(n).Cty(rp)
+			p := Root.Vars.Dot(n).Cty(rp) // !!!
 
-			if !ref.GlobalVar {
+			// Ignore out of scope references
+			if ref.IsModuleOutput() || ref.GlobalVar != global || !d.Has(ref.Name) {
+				// Can not simply use `!d.Has(ref.Name)` to detect out of scope.
+				// Consider valid acyclic declarations:
+				// `locals { a = var.a ; b = some_module.b }`
 				continue
 			}
 
@@ -868,7 +882,7 @@ func varsTopologicalOrder(vars Dict) ([]string, error) {
 		return nil
 	}
 
-	for n := range vars.Items() {
+	for n := range d.Items() {
 		if used[n] == 0 { // unvisited
 			if err := dfs(n); err != nil {
 				return nil, err
@@ -879,7 +893,7 @@ func varsTopologicalOrder(vars Dict) ([]string, error) {
 }
 
 func (bp *Blueprint) evalVars() (Dict, error) {
-	order, err := varsTopologicalOrder(bp.Vars)
+	order, err := topologicalOrderDeclarations(bp.Vars, true)
 	if err != nil {
 		return Dict{}, err
 	}
