@@ -550,10 +550,7 @@ _SLURM_TOPO_ROOT = "slurm-root"
 def _make_physical_path(physical_host: str) -> List[str]:
     assert physical_host.startswith("/"), f"Unexpected physicalHost: {physical_host}"
     parts = physical_host[1:].split("/")
-    # Due to issues with Slurm's topology plugin, we can not use all components of `physicalHost`,
-    # trim it down to `cluster/rack`.
-    short_path = parts[:2]
-    return [_SLURM_TOPO_ROOT, *short_path]
+    return [_SLURM_TOPO_ROOT, *parts]
 
 def add_nodeset_topology(
     nodeset: object, bldr: TopologyBuilder, lkp: util.Lookup

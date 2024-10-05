@@ -78,9 +78,14 @@ def test_gen_topology_conf(tpu_mock):
         "SwitchName=slurm-root Switches=a,b,ns_blue,ns_green,ns_pink",
         # "physical" topology
         'SwitchName=a Switches=a,b',
-        'SwitchName=a Nodes=m22-blue-[0-1],m22-green-3',
-        'SwitchName=b Nodes=m22-blue-2',
+        'SwitchName=a Switches=a,b,c',
+        'SwitchName=a Nodes=m22-blue-0',
+        'SwitchName=b Nodes=m22-blue-1',
+        'SwitchName=c Nodes=m22-green-3',
         'SwitchName=b Switches=a',
+        'SwitchName=a Nodes=m22-blue-2',
+        'SwitchName=b Switches=a',
+        'SwitchName=a Switches=a',
         'SwitchName=a Nodes=m22-blue-3',
         # topology "by nodeset"
         "SwitchName=ns_blue Nodes=m22-blue-[4-6]",
@@ -101,10 +106,18 @@ def test_gen_topology_conf(tpu_mock):
         "SwitchName=s0 Switches=s0_[0-4]", # root
         # "physical" topology
         'SwitchName=s0_0 Switches=s0_0_[0-1]', # /a
-        'SwitchName=s0_0_0 Nodes=m22-blue-[0-1],m22-green-3', # /a/a
-        'SwitchName=s0_0_1 Nodes=m22-blue-2',  # /a/b
+        'SwitchName=s0_0_0 Switches=s0_0_0_[0-2]', # /a/a
+        'SwitchName=s0_0_0_0 Nodes=m22-blue-0',
+        'SwitchName=s0_0_0_1 Nodes=m22-blue-1',
+        'SwitchName=s0_0_0_2 Nodes=m22-green-3',
+
+        'SwitchName=s0_0_1 Switches=s0_0_1_0',   # /a/b
+        'SwitchName=s0_0_1_0 Nodes=m22-blue-2',
         'SwitchName=s0_1 Switches=s0_1_0',  # /b
-        'SwitchName=s0_1_0 Nodes=m22-blue-3',  # /b/a
+
+        'SwitchName=s0_1_0 Switches=s0_1_0_0',  # /b/a
+        'SwitchName=s0_1_0_0 Nodes=m22-blue-3',
+
         # topology "by nodeset"
         "SwitchName=s0_2 Nodes=m22-blue-[4-6]",
         "SwitchName=s0_3 Nodes=m22-green-[0-2,4]",
