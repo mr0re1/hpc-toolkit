@@ -45,6 +45,7 @@ from util import (
 from util import lookup
 from suspend import delete_instances
 import tpu
+import mig
 import conf
 
 log = logging.getLogger()
@@ -129,7 +130,6 @@ def start_instance_op(inst):
 def start_instances(node_list):
     log.info("{} instances to start ({})".format(len(node_list), ",".join(node_list)))
     lkp = lookup()
-    # TODO: use code from resume.py to assign proper placement
     normal, tpu_nodes = separate(lkp.node_is_tpu, node_list)
     ops = {inst: start_instance_op(inst) for inst in normal}
 
@@ -226,6 +226,9 @@ def _find_tpu_node_action(nodename, state) -> NodeAction:
 
 def get_node_action(nodename: str) -> NodeAction:
     """Determine node/instance status that requires action"""
+    if mig.is_mig_node(nodename):
+        return NodeActionUnchanged() # !!!!
+
     state = lookup().node_state(nodename)
 
     if lookup().node_is_fr(nodename):

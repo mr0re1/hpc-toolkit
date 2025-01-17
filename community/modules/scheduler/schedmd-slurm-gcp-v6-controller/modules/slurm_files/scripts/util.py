@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Iterable, List, Tuple, Optional, Any, Dict, Sequence
+from typing import Iterable, List, Tuple, Optional, Any, Dict, Sequence, Callable
 import argparse
 import base64
 from dataclasses import dataclass
@@ -780,7 +780,7 @@ def retry(max_retries: int, init_wait_time: float, warn_msg: str, exc_type: Exce
     return decorator
 
 
-def separate(pred, coll):
+def separate(pred: Callable[[Any], bool], coll:Iterable[Any]) -> Tuple[List[Any], List[Any]]:
     """filter into 2 lists based on pred returning True or False
     returns ([False], [True])
     """
