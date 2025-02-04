@@ -75,7 +75,7 @@ locals {
     install_dir             = var.enable_hybrid ? local.install_dir : null
     slurm_control_host      = var.enable_hybrid ? var.slurm_control_host : null
     slurm_control_host_port = var.enable_hybrid ? local.slurm_control_host_port : null
-    slurm_control_addr      = var.enable_hybrid ? var.slurm_control_addr : null
+    slurm_control_addr      = var.slurm_control_addr
     slurm_bin_dir           = var.enable_hybrid ? local.slurm_bin_dir : null
     slurm_log_dir           = var.enable_hybrid ? local.slurm_log_dir : null
 

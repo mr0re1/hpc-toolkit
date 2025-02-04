@@ -16,7 +16,7 @@
 # BUCKET
 
 locals {
-  synt_suffix       = substr(md5("${var.project_id}${var.deployment_name}"), 0, 5)
+  synt_suffix       = substr(md5("${local.controller_project_id}${var.deployment_name}"), 0, 5)
   synth_bucket_name = "${local.slurm_cluster_name}${local.synt_suffix}"
 
   bucket_name = var.create_bucket ? module.bucket[0].name : var.bucket_name
@@ -31,7 +31,7 @@ module "bucket" {
   location   = var.region
   names      = [local.synth_bucket_name]
   prefix     = "slurm"
-  project_id = var.project_id
+  project_id = local.controller_project_id
 
   force_destroy = {
     (local.synth_bucket_name) = true
@@ -138,6 +138,7 @@ module "slurm_files" {
   slurm_cluster_name = local.slurm_cluster_name
   bucket_dir         = var.bucket_dir
   bucket_name        = local.bucket_name
+  slurm_control_addr = google_compute_address.controller.address
 
   slurmdbd_conf_tpl = var.slurmdbd_conf_tpl
   slurm_conf_tpl    = var.slurm_conf_tpl
