@@ -77,7 +77,7 @@ locals {
 ########
 
 data "local_file" "startup" {
-  filename = "${path.module}/files/startup_sh_unlinted"
+  filename = "${path.module}/files/startup.sh"
 }
 
 ############
