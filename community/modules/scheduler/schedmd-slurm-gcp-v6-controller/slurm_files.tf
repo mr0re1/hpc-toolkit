@@ -44,7 +44,7 @@ module "bucket" {
 
 # BUCKET IAMs
 locals {
-  compute_sa     = toset(flatten([for x in module.slurm_nodeset_template : x.service_account]))
+  compute_sa     = toset(flatten([for x in module.nodeset : x.service_account]))
   compute_tpu_sa = toset(flatten([for x in module.slurm_nodeset_tpu : x.service_account]))
   login_sa       = toset(flatten([for x in module.slurm_login_template : x.service_account]))
 
@@ -116,8 +116,7 @@ locals {
     content  = var.login_startup_script
   }]
 
-  login_startup_scripts   = { for g in var.login_nodes : g.group_name => concat(local.common_scripts, local.ghpc_startup_login) }
-  nodeset_startup_scripts = { for k, v in local.nodeset_map : k => concat(local.common_scripts, v.startup_script) }
+  login_startup_scripts = { for g in var.login_nodes : g.group_name => concat(local.common_scripts, local.ghpc_startup_login) }
 }
 
 module "daos_network_storage_scripts" {
@@ -150,7 +149,6 @@ module "slurm_files" {
 
   controller_startup_scripts         = local.ghpc_startup_script_controller
   controller_startup_scripts_timeout = var.controller_startup_scripts_timeout
-  nodeset_startup_scripts            = local.nodeset_startup_scripts
   compute_startup_scripts_timeout    = var.compute_startup_scripts_timeout
   login_startup_scripts              = local.login_startup_scripts
   login_startup_scripts_timeout      = var.login_startup_scripts_timeout
@@ -179,7 +177,6 @@ module "slurm_files" {
   ]
   login_network_storage = var.login_network_storage
 
-  nodeset     = local.nodesets
   nodeset_dyn = values(local.nodeset_dyn_map)
   # Use legacy format for now
   nodeset_tpu = values(module.slurm_nodeset_tpu)[*]

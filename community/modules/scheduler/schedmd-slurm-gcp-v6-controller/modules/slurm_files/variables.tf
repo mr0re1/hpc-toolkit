@@ -150,15 +150,7 @@ variable "login_startup_scripts" {
   default = {}
 }
 
-variable "nodeset_startup_scripts" {
-  description = "List of scripts to be ran on compute VM startup in the specific nodeset."
-  type = map(list(object({
-    filename = string
-    content  = string
-  })))
-  default = {}
-}
-
+# TODO: Move to nodeset config
 variable "compute_startup_scripts_timeout" {
   description = <<EOD
 The timeout (seconds) applied to each script in compute_startup_scripts. If
@@ -300,12 +292,6 @@ EOD
     mount_options = string
   }))
   default = []
-}
-
-variable "nodeset" {
-  description = "Cluster nodenets, as a list."
-  type        = list(any)
-  default     = []
 }
 
 variable "nodeset_dyn" {
