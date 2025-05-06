@@ -10,7 +10,7 @@ def demote(): # as orlov
     os.setuid(445305)
 
 def spawn(id):
-    cmd = f"/usr/local/google/home/orlov/p310/bin/python ./file_cache_test_worker.py {id}"
+    cmd = f"/usr/local/google/home/orlov/p310/bin/python ./file_cache_test_worker_old.py {id}"
     subprocess.run(cmd, check=True, shell=True, preexec_fn=[None, demote][id % 2])
 
 

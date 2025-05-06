@@ -16,18 +16,22 @@ def pref():
     ms = int(time.time() * 1000)
     return f"{ms} {WORKER_ID}"
 
+def value(v: int) -> str:
+    return ((v + 1) * 1024 * 512) * str(v)
+
+
 def compute(v: int):
     cache = file_cache.cache("test_f_c")
     if isinstance(cache, file_cache.NoCache):
         print(f"{pref()} NO CACHE")
     key = str(v)
     if (res := cache.get(key)) is not None:
-        assert res == v*v, f"{res} != {v*v}"
+        assert res == value(v), f"{res} != {v*v}"
         print(f"{pref()} HIT {v}")
         return
     print(f"{pref()} MISS {v}")
     time.sleep(DELAY)
-    cache.set(key, v*v)
+    cache.set(key, value(v))
     print(f"{pref()} SAVED {v}")
 
 if __name__ == "__main__":
