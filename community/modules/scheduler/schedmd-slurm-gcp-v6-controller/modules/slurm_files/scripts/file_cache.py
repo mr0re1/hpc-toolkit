@@ -23,8 +23,8 @@ log = logging.getLogger()
 # Can't reuse tool from util.py to avoid circular dependencies
 # TODO: break down util.py for better modularity.
 def _chown_slurm(path: Path) -> None:
-    shutil.chown(path, user="slurm", group="slurm")
-
+    # !!! shutil.chown(path, user="slurm", group="slurm")
+    shutil.chown(path, user="orlov", group="primarygroup")
 class FileCache:
     def __init__(self, path: Path):
         self.path = path
@@ -70,7 +70,8 @@ class NoCache:
 
 def cache(name: str) -> FileCache | NoCache:
     try:
-        path = Path("/tmp/slurm_gcp_cache/") / name
+        # !!! path = Path("/tmp/slurm_gcp_cache/") / name
+        path = Path(f"/tmp/{name}")
         if not path.exists():
             path.mkdir(exist_ok=True, parents=True)
             _chown_slurm(path)
